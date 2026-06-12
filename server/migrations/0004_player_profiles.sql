@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS player_profiles (
+    player_name TEXT PRIMARY KEY,
+    serve SMALLINT NOT NULL CHECK (serve BETWEEN 0 AND 99),
+    forehand SMALLINT NOT NULL CHECK (forehand BETWEEN 0 AND 99),
+    backhand SMALLINT NOT NULL CHECK (backhand BETWEEN 0 AND 99),
+    slice SMALLINT NOT NULL CHECK (slice BETWEEN 0 AND 99),
+    movement SMALLINT NOT NULL CHECK (movement BETWEEN 0 AND 99),
+    mental SMALLINT NOT NULL CHECK (mental BETWEEN 0 AND 99),
+    net SMALLINT NOT NULL CHECK (net BETWEEN 0 AND 99),
+    stamina SMALLINT NOT NULL CHECK (stamina BETWEEN 0 AND 99),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

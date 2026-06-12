@@ -1,0 +1,25 @@
+[workspace]
+members = [
+    "crates/shared",
+    "app",
+    "server",
+    "data-prep",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+authors = ["CalendarSlam"]
+
+[workspace.dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+clap = { version = "4", features = ["derive", "env"] }
+csv = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "chrono"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

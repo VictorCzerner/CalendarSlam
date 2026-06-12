@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: calendarslam-postgres
+    environment:
+      POSTGRES_DB: calendarslam
+      POSTGRES_USER: calendarslam
+      POSTGRES_PASSWORD: calendarslam
+    ports:
+      - "5432:5432"
+    volumes:
+      - calendarslam-postgres:/var/lib/postgresql/data
+
+volumes:
+  calendarslam-postgres:

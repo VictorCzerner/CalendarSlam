@@ -1,0 +1,21 @@
+[package]
+name = "server"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+axum = "0.8"
+chrono.workspace = true
+rand.workspace = true
+rust-embed = "8"
+serde.workspace = true
+serde_json.workspace = true
+calendar-slam-shared = { path = "../crates/shared" }
+shuttle-axum = "0.57"
+shuttle-runtime = "0.57"
+shuttle-shared-db = { version = "0.57", features = ["postgres", "sqlx"] }
+sqlx = { workspace = true, features = ["json", "migrate"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+mime_guess = "2"

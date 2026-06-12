@@ -1,0 +1,28 @@
+# Rust / Cargo build output
+/target/
+**/*.rs.bk
+
+# Trunk / WASM front build (generated; the server embeds it at compile time)
+/app/dist/
+/app/.stage/
+dist/
+
+# Shuttle local state and secrets
+/.shuttle/
+Secrets.toml
+Secrets*.toml
+
+# Environment / local config
+.env
+.env.*
+!.env.example
+
+# External ATP dataset (CC BY-NC-SA, re-downloadable from Jeff Sackmann's tennis_atp)
+/data/raw/
+
+# Editor / OS noise
+/.idea/
+/.vscode/
+*.swp
+.DS_Store
+Thumbs.db

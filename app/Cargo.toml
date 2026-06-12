@@ -1,0 +1,17 @@
+[package]
+name = "app"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+gloo-net = "0.6"
+gloo-timers = { version = "0.3", features = ["futures"] }
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+calendar-slam-shared = { path = "../crates/shared" }
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["HtmlInputElement"] }
+yew = { version = "0.21", features = ["csr"] }
