@@ -1,3 +1,4 @@
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -291,6 +292,94 @@ pub struct LeaderboardRow {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyPlayer {
+    pub id: String,
+    pub name: String,
+    pub is_bot: bool,
+    pub connected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MpTeam {
+    pub id: String,
+    pub name: String,
+    pub is_bot: bool,
+    pub picks: Vec<AttributePickDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetScore {
+    pub a: u8,
+    pub b: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BracketMatch {
+    pub round: u8,
+    pub a: String,
+    pub b: String,
+    pub winner: Option<String>,
+    pub surface: Surface,
+    /// Set-by-set games score (e.g. [6-4, 3-6, 7-5]). Empty for legacy messages.
+    #[serde(default)]
+    pub sets: Vec<SetScore>,
+    /// Running game-by-game score within each set (`games[i]` ends at `sets[i]`), for live reveal.
+    #[serde(default)]
+    pub games: Vec<Vec<SetScore>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bracket {
+    pub rounds: Vec<Vec<BracketMatch>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum MpClientMsg {
+    CreateRoom { name: String, bracket_size: u8 },
+    JoinRoom { code: String, name: String },
+    StartGame,
+    MakePick { attribute: Attribute, player: String },
+    /// Host-only: advance the knockout reveal to the next match (broadcast to everyone).
+    RevealNext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum MpServerMsg {
+    Joined { your_id: String, code: String },
+    RoomState {
+        code: String,
+        host_id: String,
+        bracket_size: u8,
+        players: Vec<LobbyPlayer>,
+    },
+    DraftTurn {
+        on_clock: String,
+        your_turn: bool,
+        spin: SpinDto,
+        deadline_ms: u32,
+        picks_made: u8,
+        total_picks: u8,
+    },
+    PickMade {
+        team_id: String,
+        attribute: Attribute,
+        player: String,
+        rating: u8,
+    },
+    KnockoutResult {
+        bracket: Bracket,
+        champion: String,
+        #[serde(default)]
+        teams: Vec<MpTeam>,
+    },
+    /// How many knockout matches have been revealed so far (host-driven, synced to all clients).
+    RevealAdvance { reveal: u32 },
+    Error { message: String },
+}
+
 // Edition buff (Fase 6): a 500-champion is the reference (0). Higher levels add, earlier rounds
 // subtract, so the achievement in the drawn edition drives the magnitude on top of the low base.
 pub const fn level_buff(level: Level) -> i16 {
@@ -342,6 +431,132 @@ pub const fn slam_points(exit_round: &str, won: bool) -> u16 {
 /// Total ATP points across a run's slams (the leaderboard's primary ranking metric).
 pub fn run_points(slams: &[SlamResultDto]) -> u32 {
     slams.iter().map(|slam| u32::from(slam.points)).sum()
+}
+
+pub const KNOCKOUT_UPSET_CHANCE: f64 = 0.12;
+
+pub fn weight(attribute: Attribute, surface: Surface) -> f64 {
+    match surface {
+        Surface::Grass => match attribute {
+            Attribute::Serve => 0.22,
+            Attribute::Net => 0.16,
+            Attribute::Forehand => 0.13,
+            Attribute::Mental => 0.12,
+            Attribute::Movement => 0.11,
+            Attribute::Backhand => 0.09,
+            Attribute::Stamina => 0.09,
+            Attribute::Return => 0.08,
+        },
+        Surface::Clay => match attribute {
+            Attribute::Movement => 0.17,
+            Attribute::Stamina => 0.16,
+            Attribute::Forehand => 0.15,
+            Attribute::Return => 0.16,
+            Attribute::Mental => 0.13,
+            Attribute::Backhand => 0.11,
+            Attribute::Serve => 0.07,
+            Attribute::Net => 0.05,
+        },
+        Surface::Hard | Surface::Carpet => match attribute {
+            Attribute::Serve => 0.14,
+            Attribute::Forehand => 0.14,
+            Attribute::Return => 0.13,
+            Attribute::Backhand => 0.12,
+            Attribute::Movement => 0.13,
+            Attribute::Mental => 0.12,
+            Attribute::Stamina => 0.12,
+            Attribute::Net => 0.10,
+        },
+    }
+}
+
+pub fn team_strength(team: &[AttributePickDto], surface: Surface) -> f64 {
+    team.iter()
+        .map(|pick| f64::from(pick.rating) * weight(pick.attribute, surface))
+        .sum()
+}
+
+pub fn knockout_match(
+    a: &[AttributePickDto],
+    b: &[AttributePickDto],
+    surface: Surface,
+    rng: &mut impl Rng,
+) -> bool {
+    let a_favored = team_strength(a, surface) >= team_strength(b, surface);
+    a_favored != rng.gen_bool(KNOCKOUT_UPSET_CHANCE)
+}
+
+/// Full outcome of a knockout match: who won, the final set scores, and the running game-by-game
+/// score within each set (`games[i]` is the score after each game of set `i`, last = final).
+#[derive(Debug, Clone)]
+pub struct MatchOutcome {
+    pub a_wins: bool,
+    pub sets: Vec<SetScore>,
+    pub games: Vec<Vec<SetScore>>,
+}
+
+/// Per-GAME probability that A wins one game, from the surface-weighted strength gap (logistic).
+/// Games are volatile, so this stays near 50/50 — the edge compounds over a set/match.
+fn game_win_prob(strength_a: f64, strength_b: f64) -> f64 {
+    let diff = strength_a - strength_b;
+    let p = 1.0 / (1.0 + (-diff * 0.06).exp());
+    p.clamp(0.25, 0.75)
+}
+
+/// Play one set game by game following real tennis rules, returning the running score after each
+/// game (last element is the final set score). Valid finals only: 6-0..6-4, 7-5, 7-6 (tiebreak).
+fn play_set(p_game: f64, rng: &mut impl Rng) -> Vec<SetScore> {
+    let mut a = 0u8;
+    let mut b = 0u8;
+    let mut frames = Vec::new();
+    loop {
+        if rng.gen_bool(p_game) {
+            a += 1;
+        } else {
+            b += 1;
+        }
+        frames.push(SetScore { a, b });
+        let lead = (i16::from(a) - i16::from(b)).abs();
+        // 7-5 / 7-6 (tiebreak), or 6-0..6-4 (win by two at six).
+        if a == 7 || b == 7 || (a.max(b) >= 6 && lead >= 2) {
+            break;
+        }
+    }
+    frames
+}
+
+/// Simulate a best-of-`best_of` match game by game. The strength gap drives each game's odds, so
+/// closer matchups go the distance more often and every set/score is tennis-legal.
+pub fn simulate_knockout_match(
+    a: &[AttributePickDto],
+    b: &[AttributePickDto],
+    surface: Surface,
+    best_of: u8,
+    rng: &mut impl Rng,
+) -> MatchOutcome {
+    let p = game_win_prob(team_strength(a, surface), team_strength(b, surface));
+    let need = best_of / 2 + 1;
+
+    let mut won_a = 0u8;
+    let mut won_b = 0u8;
+    let mut sets = Vec::new();
+    let mut games = Vec::new();
+    while won_a < need && won_b < need {
+        let frames = play_set(p, rng);
+        let final_score = *frames.last().expect("a set has at least one game");
+        if final_score.a > final_score.b {
+            won_a += 1;
+        } else {
+            won_b += 1;
+        }
+        sets.push(final_score);
+        games.push(frames);
+    }
+    MatchOutcome {
+        a_wins: won_a > won_b,
+        sets,
+        games,
+    }
 }
 
 pub const fn clamp_rating(value: i16) -> u8 {
@@ -413,6 +628,139 @@ mod tests {
     fn attribute_keys_roundtrip() {
         for attribute in Attribute::ALL {
             assert_eq!(Attribute::from_key(attribute.key()), Some(attribute));
+        }
+    }
+
+    #[test]
+    fn team_strength_uses_surface_weighting() {
+        let hard = SpinDto {
+            level: Level::GrandSlam,
+            tournament: "Test".to_string(),
+            year: 2026,
+            surface: Surface::Hard,
+            players: Vec::new(),
+        };
+        let team = vec![
+            AttributePickDto {
+                attribute: Attribute::Serve,
+                player: "A".to_string(),
+                rating: 90,
+                source: hard.clone(),
+            },
+            AttributePickDto {
+                attribute: Attribute::Return,
+                player: "B".to_string(),
+                rating: 60,
+                source: hard,
+            },
+        ];
+
+        assert!(team_strength(&team, Surface::Grass) > team_strength(&team, Surface::Clay));
+    }
+
+    #[test]
+    fn knockout_match_favors_stronger_side_without_upset() {
+        struct NoUpset;
+
+        impl rand::RngCore for NoUpset {
+            fn next_u32(&mut self) -> u32 {
+                u32::MAX
+            }
+
+            fn next_u64(&mut self) -> u64 {
+                u64::MAX
+            }
+
+            fn fill_bytes(&mut self, dest: &mut [u8]) {
+                dest.fill(0xff);
+            }
+
+            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+                self.fill_bytes(dest);
+                Ok(())
+            }
+        }
+
+        let source = SpinDto {
+            level: Level::GrandSlam,
+            tournament: "Test".to_string(),
+            year: 2026,
+            surface: Surface::Hard,
+            players: Vec::new(),
+        };
+        let strong = Attribute::ALL
+            .iter()
+            .map(|attribute| AttributePickDto {
+                attribute: *attribute,
+                player: format!("S{}", attribute.key()),
+                rating: 90,
+                source: source.clone(),
+            })
+            .collect::<Vec<_>>();
+        let weak = Attribute::ALL
+            .iter()
+            .map(|attribute| AttributePickDto {
+                attribute: *attribute,
+                player: format!("W{}", attribute.key()),
+                rating: 50,
+                source: source.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        assert!(knockout_match(&strong, &weak, Surface::Hard, &mut NoUpset));
+    }
+
+    #[test]
+    fn knockout_sets_are_tennis_legal_best_of_five() {
+        fn team(rating: u8) -> Vec<AttributePickDto> {
+            let source = SpinDto {
+                level: Level::GrandSlam,
+                tournament: "Test".to_string(),
+                year: 2026,
+                surface: Surface::Hard,
+                players: Vec::new(),
+            };
+            Attribute::ALL
+                .iter()
+                .map(|attribute| AttributePickDto {
+                    attribute: *attribute,
+                    player: format!("{rating}{}", attribute.key()),
+                    rating,
+                    source: source.clone(),
+                })
+                .collect()
+        }
+
+        fn legal_set(s: &SetScore) -> bool {
+            let (hi, lo) = (s.a.max(s.b), s.a.min(s.b));
+            matches!((hi, lo), (6, 0..=4) | (7, 5) | (7, 6))
+        }
+
+        let a = team(88);
+        let b = team(72);
+        let mut rng = rand::thread_rng();
+        for _ in 0..500 {
+            let outcome = simulate_knockout_match(&a, &b, Surface::Hard, 5, &mut rng);
+            // Best-of-5: the winner takes exactly 3 sets; 3..=5 sets total.
+            assert!((3..=5).contains(&outcome.sets.len()));
+            let a_sets = outcome.sets.iter().filter(|s| s.a > s.b).count();
+            let b_sets = outcome.sets.len() - a_sets;
+            assert_eq!(a_sets.max(b_sets), 3);
+            assert_eq!(outcome.a_wins, a_sets > b_sets);
+            assert_eq!(outcome.sets.len(), outcome.games.len());
+            for (set, frames) in outcome.sets.iter().zip(&outcome.games) {
+                assert!(legal_set(set), "illegal set score {:?}", set);
+                // Each game advances exactly one point and the last frame is the final score.
+                assert_eq!(frames.last(), Some(set));
+                let mut prev = SetScore { a: 0, b: 0 };
+                for frame in frames {
+                    let stepped = frame.a + frame.b == prev.a + prev.b + 1
+                        && frame.a >= prev.a
+                        && frame.b >= prev.b;
+                    assert!(stepped, "non-monotonic frame {:?} after {:?}", frame, prev);
+                    prev = *frame;
+                }
+            }
         }
     }
 }

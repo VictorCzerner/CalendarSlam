@@ -5,8 +5,9 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 chrono.workspace = true
+futures-util = "0.3"
 rand.workspace = true
 rust-embed = "8"
 serde.workspace = true

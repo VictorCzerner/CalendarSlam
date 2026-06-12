@@ -9,3 +9,4 @@ authors.workspace = true
 serde.workspace = true
 chrono = { workspace = true, features = ["serde", "clock"] }
 serde_json.workspace = true
+rand.workspace = true

@@ -6,12 +6,34 @@ license.workspace = true
 
 [dependencies]
 getrandom = { version = "0.2", features = ["js"] }
-gloo-net = "0.6"
+futures-util = "0.3"
+futures-channel = "0.3"
+gloo-net = { version = "0.6", features = ["json", "http", "websocket"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
+js-sys = "0.3"
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 calendar-slam-shared = { path = "../crates/shared" }
+wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["HtmlInputElement"] }
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "BlobPropertyBag",
+    "CanvasRenderingContext2d",
+    "Document",
+    "Element",
+    "File",
+    "FilePropertyBag",
+    "HtmlAnchorElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlSelectElement",
+    "Location",
+    "Navigator",
+    "ShareData",
+    "Url",
+    "Window",
+] }
 yew = { version = "0.21", features = ["csr"] }

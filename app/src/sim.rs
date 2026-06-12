@@ -1,7 +1,7 @@
 use rand::Rng;
 use calendar_slam_shared::{
-    slam_points, Attribute, AttributePickDto, EditionDto, PlayerDto, PlayerRatings, RoundResultDto,
-    SlamResultDto, Surface,
+    slam_points, team_strength, weight, Attribute, AttributePickDto, EditionDto, PlayerDto,
+    PlayerRatings, RoundResultDto, SlamResultDto, Surface,
 };
 
 const ROUNDS: [&str; 7] = ["R1", "R2", "R3", "R4", "QF", "SF", "F"];
@@ -18,10 +18,7 @@ pub fn overall(attributes: &[AttributePickDto]) -> u8 {
 }
 
 pub fn strength_for_surface(attributes: &[AttributePickDto], surface: Surface) -> f64 {
-    attributes
-        .iter()
-        .map(|pick| f64::from(pick.rating) * weight(pick.attribute, surface))
-        .sum()
+    team_strength(attributes, surface)
 }
 
 /// Surface-weighted overall (0..99) of a full 8-attribute profile (an opponent).
@@ -131,42 +128,5 @@ pub fn simulate_slam(attributes: &[AttributePickDto], edition: &EditionDto) -> S
         points: slam_points("W", true),
         lost_to: None,
         rounds,
-    }
-}
-
-fn weight(attribute: Attribute, surface: Surface) -> f64 {
-    match surface {
-        // Grass: serve-dominated, fast points -> return matters least here.
-        Surface::Grass => match attribute {
-            Attribute::Serve => 0.22,
-            Attribute::Net => 0.16,
-            Attribute::Forehand => 0.13,
-            Attribute::Mental => 0.12,
-            Attribute::Movement => 0.11,
-            Attribute::Backhand => 0.09,
-            Attribute::Stamina => 0.09,
-            Attribute::Return => 0.08,
-        },
-        // Clay: long rallies, many breaks -> return is a major weapon.
-        Surface::Clay => match attribute {
-            Attribute::Movement => 0.17,
-            Attribute::Stamina => 0.16,
-            Attribute::Forehand => 0.15,
-            Attribute::Return => 0.16,
-            Attribute::Mental => 0.13,
-            Attribute::Backhand => 0.11,
-            Attribute::Serve => 0.07,
-            Attribute::Net => 0.05,
-        },
-        Surface::Hard | Surface::Carpet => match attribute {
-            Attribute::Serve => 0.14,
-            Attribute::Forehand => 0.14,
-            Attribute::Return => 0.13,
-            Attribute::Backhand => 0.12,
-            Attribute::Movement => 0.13,
-            Attribute::Mental => 0.12,
-            Attribute::Stamina => 0.12,
-            Attribute::Net => 0.10,
-        },
     }
 }

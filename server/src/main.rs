@@ -15,7 +15,7 @@ async fn main(#[Postgres] pool: sqlx::PgPool) -> shuttle_axum::ShuttleAxum {
         .await
         .expect("fixture seed should succeed");
 
-    let state = AppState { pool };
+    let state = AppState::new(pool);
     let router = Router::new()
         .merge(routes::api_router(state))
         .fallback(assets::static_handler);
